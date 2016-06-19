@@ -15,7 +15,7 @@
 %\setlength{\droptitle}{-10em}  
 
 \title{ \huge Artificial Neural Networks \\ 
-  { \large Project 2: Hopfield networks: character recognition}}
+  { \large Project 2: Hopfield networks for character recognition}}
 \author{
         Lood, Cédric \\
         \small Master of Bioinformatics
@@ -33,7 +33,7 @@ implementation was done in the MatLab environment (2015a) using the
 neural networks toolbox. The scripts for each of the sections can be
 found in the annex to this report.
 
-\section{Hopfield network}
+\section{Hopfield network with 5 characters}
 
 First we consider the creation of digital versions of characters. The
 requirements were to build a sequence of characters (lowercase) using
@@ -65,21 +65,79 @@ To test the retrieval of the points, some noise was added by flipping 3 random p
   \label{fig:hopfield_chargen}
 \end{figure}
 
-While the process did work perfectly, it is not immune to spurious
-states. Those are states that are not explicitely put into the network
-as attractors when it is build.
+While the process above did work perfectly, it is not immune to
+spurious states. Those are states that are not explicitely put into
+the network as attractors when it is build. As mentioned in the matlab
+manual for Hopfield networks, the design method guarantees the
+existence of the attractors explicitely put into the network, but the
+existence of other attractors is not excluded.
 
-% \begin{figure}[H]
-%   \centering
-%   \includegraphics[scale=.43]{training_performance.pdf}
-%   \caption{Training performance}
-%   \label{fig:trainnl}
-% \end{figure}
+\section{Critical loading capacity}
 
-%{\footnotesize
-%\bibliographystyle{ieeetr} 
-%\bibliography{bib-db}}
-\newpage
+I started by looking how far I could push the network before I would
+start seeing spurious state appear visually by plotting the
+reconstructed characters. From 16 characters, I started obtaining some
+spurious states by varying multiple reconstructions of stochastic
+noisy characters (ie, for multiple random seeds). Figure
+\ref{fig:hopfield_rnd7} shows a perfect reconstruction of the 16
+characters for a random seed of 7, while for the same configuration,
+but with a random seed of 8, we observe (figure
+\ref{fig:hopfield_rnd8}) spurious states, interestingly we also
+observe a mis-reconstructed ``l'' instead of the original ``i''. This
+can be understood given the closeness of both characters.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[scale=.30]{hopfield_spurious_rnd7.png}
+  \caption{Perfect reconstruction of 16 characters}
+  \label{fig:hopfield_rnd7}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[scale=.30]{hopfield_spurious_rnd8.png}
+  \caption{Same configuration as above (different noise), imperfect reconstruction}
+  \label{fig:hopfield_rnd8}
+\end{figure}
+
+Given the variation in the results for different initialization, I
+proceeded to evaluate the reconstructions errors as indicated in the
+instructions over 50 different values of random seeds. The results are
+reported in figure \ref{fig:hopfield_error}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[scale=.50]{hopfield_error.pdf}
+  \caption{Reconstruction error for increasing number of stored patterns}
+  \label{fig:hopfield_error}
+\end{figure}
+
+In total we use 35 neurons to store 36 different patterns, so it is
+easy to calculate the theoritical storage capacity for perfect
+retrieval, which is expressed mathematically by
+$p_{max}=\frac{N}{4logN}=2.46$. The error graph seems to validate this
+estimation, as there is indeed not a single error over the 50
+reconstructions for less than 3 patterns.
+
+\section{Perfect retrieval of character set}
+
+In order to achieve perfect retrieval, a technique that would
+certainly work is to increase the number of neurons available in the
+network. The number of patterns would stay fixed at 36. To determine
+the number of neurons required, we could try to switch the storage
+capacity formula and solve for $N$, but that is not trivial. In fact,
+we need to approximate the solution to this equation (using for
+example Lambert W
+function\footnote{https://en.wikipedia.org/wiki/Lambert\_W\_function}). I
+used a numerical method to estimate the value of N, and found that for
+$N=160$ we would be able to store all patterns without errors.
+
+One way to proceed then, is simply to scale up the numbers of pixels
+by boosting the density artificially. By replacing each pixels by
+3-by-3 pixels of the same value, one easily reaches the number of
+neurons necessary for perfect retrieval. Doing so using the same
+dataset resulted in no errors.
+
 \begin{appendices}
 \section{Hopnet}
 \subsection{Part 1}
@@ -136,6 +194,84 @@ for i = 1:5
     imagesc(reshape(recon_digits_plot(:,1),5,7)',[0,1]);
     axis off; colormap copper;
 end
+
+% Critical loading of network
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+n_rand = 50;
+errors = zeros(36, n_rand);
+
+for randg = 1:n_rand % loop over 10 different seeds
+    rng(randg);
+    %errors = zeros(36, 1);
+    for p = 1:36 % loop over a total number of 36 characters
+        net = newhop(characters(:,1:p));
+        reconstructed_chars = zeros(35, p);
+        noisy_digits = zeros(35,p);
+        
+        for i=1:p % addition of noise
+            noisy_digits(:,i)=noise3(characters(:,i));
+        end
+    
+        for i=1:p % reconstruction
+            [Y Pf Af] = sim(net, {1 100}, [], {noisy_digits(:,i)});
+            reconstructed_chars(:,i) = Y{1,100};
+        end
+        errors(p, randg) = sum(sum(reconstructed_chars ~= characters(:,1:p)));
+    end
+end
+
+% averaging errors over multiple random seeds
+frac_errors = zeros(36,1);
+for p=1:36
+    frac_errors(p) = sum(errors(p,:))/n_rand
+    frac_errors(p) = frac_errors(p)/(p*35);
+end
+
+figure('Color', [1 1 1]);
+plot(1:36, frac_errors, 'b-','linewidth',4);
+title('Error rate evolution','FontSize',18,'FontWeight', 'normal');
+xlabel('Number of patterns','FontSize',14);
+ylabel('Error','FontSize',14);
+
+% theoritical capacity
+disp(35/(4*log(35)));
+
+res=0;
+for i=1:500
+    res = exp(i)/i;
+    if(res > 10e+66)
+        disp(i);
+        break;
+    end
+    disp(res);
+end
+
+% Perfect retrieval
+%%%%%%%%%%%%%%%%%%%
+dense_char = zeros(35*9, 36);
+for i=1:36
+    position = 1;
+    for j=1:35*9
+        dense_char(j,i) = characters(position, i);
+        if(~mod(j, 9))
+            position = position + 1;
+        end
+    end
+end
+
+net = newhop(dense_char(:,1:36));
+noisy_digits = zeros(35*9,36);
+
+for i=1:36 % addition of noise
+    noisy_digits(:,i)=noise3(dense_char(:,i));
+end
+for i=1:36 % reconstruction
+    [Y Pf Af] = sim(net, {1 100}, [], {noisy_digits(:,i)});
+    reconstructed_chars(:,i) = Y{1,100};
+end
+
+errors = sum(sum(reconstructed_chars ~= dense_char));
+
 \end{lstlisting}
 \subsection{Helper functions: character generator}
 \begin{lstlisting}
